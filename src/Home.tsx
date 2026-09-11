@@ -4,6 +4,7 @@ import { MoonPayBuyWidget } from '@moonpay/moonpay-react';
 const SIGNING_SERVER_URL = import.meta.env.VITE_SIGNING_SERVER_URL;
 
 const handleGetSignature = async (url: string): Promise<string> => {
+  console.log("URL being signed:", url); // TEMP DEBUG
   const response = await fetch(`${SIGNING_SERVER_URL}/sign-url?url=${encodeURIComponent(url)}`);
   const { signature } = await response.json();
   return signature;
