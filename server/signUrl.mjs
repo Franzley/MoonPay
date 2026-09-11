@@ -32,7 +32,7 @@ const allowedOrigins = process.env.CORS_ORIGINS
   : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:8080'];
 app.use(cors({ origin: allowedOrigins }));
 
-const secretKey = import.meta.env.VITE_VITE_MOONPAY_SECRET_KEY
+const secretKey = process.env.MOONPAY_SECRET_KEY;
 if (!secretKey) {
   console.error('MOONPAY_SECRET_KEY is not set. Copy .env.example to .env and fill in your key.');
   process.exit(1);
