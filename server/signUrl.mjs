@@ -1,13 +1,22 @@
-// Signing Server for MoonPay Widget Integration
+// Shared URL Signing Server for MoonPay Widget Demos
 //
-// Two endpoints:
-// 1. /sign-url    — HMAC-SHA256 signs a widget URL's query string with your secret key.
-// 2. /get-ip-hash — Captures the customer's real public IP on THIS request, canonicalizes it
-//                   per MoonPay's rules, and HMAC-SHA256 hashes it. The frontend embeds this
-//                   hash into the widget URL as `allowedIpAddress` BEFORE calling /sign-url,
-//                   so the signature covers it automatically.
+// WHY THIS EXISTS:
+// MoonPay requires all widget URLs to be signed with your secret key (HMAC-SHA256)
+// before the widget will load. This prevents tampering with parameters like wallet
+// addresses and currency amounts on the client side. The secret key must NEVER be
+// exposed in frontend code — it stays on this server.
+//
+// FLOW:
+// 1. Frontend builds a widget URL with parameters (apiKey, walletAddress, etc.)
+// 2. Frontend sends that URL to this server's /sign-url endpoint
+// 3. This server signs the URL's query string with HMAC-SHA256 using the secret key
+// 4. The signature is returned to the frontend, which passes it to the MoonPay SDK
 //
 // USAGE:
+// All demo projects in this repo point to http://localhost:5000/sign-url by default.
+// Run this single server instead of running a separate signUrl.mjs per project.
+//
+//   cd server
 //   cp .env.example .env   # Fill in your MOONPAY_SECRET_KEY
 //   npm install
 //   npm start
@@ -20,7 +29,7 @@ import crypto from 'crypto';
 const app = express();
 const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',')
-  : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'];
+  : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:8080'];
 app.use(cors({ origin: allowedOrigins }));
 
 const secretKey = process.env.MOONPAY_SECRET_KEY;
@@ -28,8 +37,6 @@ if (!secretKey) {
   console.error('MOONPAY_SECRET_KEY is not set. Copy .env.example to .env and fill in your key.');
   process.exit(1);
 }
-
-// ---- URL signing ----
 
 const generateSignature = (url) => {
   return crypto
@@ -43,6 +50,7 @@ app.get('/sign-url', (req, res) => {
   if (!url) {
     return res.status(400).json({ error: 'URL is required' });
   }
+
   try {
     const signature = generateSignature(url);
     res.json({ signature });
@@ -52,51 +60,20 @@ app.get('/sign-url', (req, res) => {
   }
 });
 
-// ---- IP hashing ----
-// Follows MoonPay's canonicalization rules:
-// - Prefer True-Client-IP header over other proxy headers or raw socket address.
-// - Strip brackets/port from IPv6.
-// - Unmap IPv4-mapped IPv6 (::ffff:a.b.c.d -> a.b.c.d).
-// - Lowercase IPv6.
-
-function canonicalizeIp(rawIp) {
-  if (!rawIp) return null;
-  let ip = rawIp.trim().toLowerCase();
-
-  const bracketMatch = ip.match(/^\[(.+)\]:\d+$/);
-  if (bracketMatch) {
-    ip = bracketMatch[1];
-  }
-
-  const mappedMatch = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mappedMatch) {
-    ip = mappedMatch[1];
-  }
-
-  return ip;
-}
-
-function getClientIp(req) {
-  const trueClientIp = req.headers['true-client-ip'];
-  const raw = trueClientIp || req.socket.remoteAddress;
-  return canonicalizeIp(raw);
+// signUrl.mjs
+function canonicalizeIp(ip) {
+  // strip IPv6 brackets/port, unmap IPv4-mapped IPv6, etc. — see guide's canonicalization rules
+  return ip.replace(/^::ffff:/, '').replace(/\[|\]|:\d+$/g, '');
 }
 
 app.get('/get-ip-hash', (req, res) => {
-  const ip = getClientIp(req);
-  if (!ip) {
-    return res.status(400).json({ error: 'Could not determine client IP' });
-  }
-  try {
-    const ipHash = crypto.createHmac('sha256', secretKey).update(ip).digest('base64');
-    res.json({ ipHash, observedIp: ip }); // observedIp is for debugging only — remove before production
-  } catch (error) {
-    console.error('Error generating IP hash:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  const rawIp = req.headers['true-client-ip'] || req.socket.remoteAddress;
+  const ip = canonicalizeIp(rawIp);
+  const ipHash = crypto.createHmac('sha256', secretKey).update(ip).digest('base64');
+  res.json({ ipHash });
 });
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Signing server running on port ${PORT}`);
+  console.log(`Signing server running on http://localhost:${PORT}`);
 });
