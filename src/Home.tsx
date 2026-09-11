@@ -13,11 +13,15 @@ export default function Home() {
   const [ipHash, setIpHash] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${SIGNING_SERVER_URL}/get-ip-hash`)
-      .then(res => res.json())
-      .then(data => setIpHash(data.ipHash))
-      .catch(err => console.error('Failed to get IP hash:', err));
+    // TEMPORARY: force a wrong hash to test enforcement
+    setIpHash("wrongHashForTesting123==");
+    
+    // fetch(`${SIGNING_SERVER_URL}/get-ip-hash`)
+    //   .then(res => res.json())
+    //   .then(data => setIpHash(data.ipHash))
+    //   .catch(err => console.error('Failed to get IP hash:', err));
   }, []);
+
 
   if (!ipHash) return <div>Loading...</div>;
 
